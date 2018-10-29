@@ -8,7 +8,7 @@ Date created: 10/19/2018
 Date last modified: 10/19/2018
 Python Version: 2.7.15
 version:
-    0.0.1 
+    0.0.1
 
 ./reg_pool_tool.py -h for usage.
 
@@ -250,15 +250,163 @@ def ls_pools(address, auth_token):  # -> List[{dict}]
 
 class RegPool:
     """work with regkey pools"""
-    def __init__(self, bigiq_address, username, password):
+    def __init__(self, bigiq_address, username, password, debug=False):
         self.address = bigiq_address
         self.user = username
         self.password = password
         self.token = get_auth_token(self.address, self.user, self.password,
                                     uri='/mgmt/shared/authn/login')
-        
-    def list_pool():
-        pass
+        self.debug = debug
+
+    def list_pool(self):
+        """ Lists existing regkey pools """
+        uri = '/mgmt/cm/device/licensing/pool/regkey/licenses'
+        url_list = ['https://', self.address, uri]
+        url = ''.join(url_list)
+        pool_list_result = get(url, self.token, self.debug, return_encoding='json')
+        # create a list of list [[<REGKEY UUID>,<name>]]
+        pool_list = []
+        for entry in pool_list_result['items']:
+            pool_list.append([entry['id'], entry['name']])
+
+        return pool_list
+
+
+    def list_offereings(self, regkey_pool_uuid):
+        """Returns a list of offerings for the regkey pool UUID given"""
+        url_list = ['https://', self.address, '/mgmt/cm/device/licensing/pool/regkey/licenses/',
+                    regkey_pool_uuid, '/offerings']
+        url = ''.join(url_list)
+        offering_get_result = get(url, self.token, self.debug, return_encoding='json')
+        offering_list_result = offering_get_result['items']
+
+        # returns list of dictionaries of offerings
+        return offering_list_result
+
+    def install_offering(self, regkey_pool_uuid, new_regkey, add_on_keys):
+        """
+        :type regkey_pool_uuid: str
+        :type new_regkey: str
+        :type add_on_keys: str comma sep keys
+
+        This fucntion installs a new base regkey and optional addon keys and
+        install, and attempts to activate. All status in printed by the function
+        and there is no return statement. If it fails it will show that was well.
+        """
+        uri = '/mgmt/cm/device/licensing/pool/regkey/licenses/'
+        url_list = ['https://', self.address, uri, regkey_pool_uuid, '/offerings/']
+        url = ''.join(url_list)
+        if add_on_keys:
+            post_dict = {
+                "regKey": new_regkey,
+                "status": "ACTIVATING_AUTOMATIC",
+                "addOnKeys": add_on_keys.split(','),
+                "description" : ""
+                }
+        else:
+            post_dict = {
+                "regKey": new_regkey,
+                "status": "ACTIVATING_AUTOMATIC",
+                "description" : ""
+            }
+        # format dict to make sure it is json compliant
+        payload = json.dumps(post_dict)
+        try:
+            post(url, self.token, payload, self.debug)
+            print('\nSent base regkey {} to License server status:'.format(new_regkey))
+        except:
+            print('Post to License server failed')
+            raise
+
+        # poll for "eulaText"
+        poll_result = {}
+        attempt = 0 # keep track of tries and give up exit script after 10
+        uri = '/mgmt/cm/device/licensing/pool/regkey/licenses/'
+        url_list = ['https://', self.address, uri, regkey_pool_uuid, '/offerings/', new_regkey]
+        url = ''.join(url_list)
+        while "eulaText" not in poll_result.keys():
+            try:
+                poll_result = get(url, self.token, self.debug, return_encoding='json')
+                print('\npoll {} for {}'.format(attempt +1, new_regkey))
+                if "fail" in poll_result['message']:
+                    sys.exit(poll_result['message'])
+                print(poll_result['status'])
+                print(poll_result['message'])
+                time.sleep(5)
+            except:
+                print('Poll for eula failed for regkey {}'.format(new_regkey))
+                raise
+            attempt += 1
+            if attempt == 5:
+                sys.exit('Giving up after 5 tries to poll for EULA for RegKey')
+        print('Finished polling...')
+
+        # since we have eula back we need to patch back the eula
+        # update "status" in dict
+        poll_result["status"] = "ACTIVATING_AUTOMATIC_EULA_ACCEPTED"
+        uri = '/mgmt/cm/device/licensing/pool/regkey/licenses/'
+        url_list = ['https://', self.address, uri, regkey_pool_uuid, '/offerings/', new_regkey]
+        url = ''.join(url_list)
+        patch_dict = {"status":poll_result['status'], "eulaText": poll_result['eulaText']}
+        patch_payload = json.dumps(patch_dict)
+        print('sending PATCH to accept EULA for {}'.format(new_regkey))
+        try:
+            patch_result = patch(url, self.token, patch_payload, self.debug)
+            print('{} for {}'.format(patch_result['message'], new_regkey))
+            print(patch_result.get('status', 'ERROR: Status Not found in path_result'))
+        except:
+            raise
+
+
+    def modify_offering_addon(self, regkey_pool_uuid, new_regkey, add_on_keys):
+        """
+        :type regkey_pool_uuid: str
+        :type new_regkey: str
+        :type add_on_keys: str comma sep keys
+
+        """
+
+        uri = '/mgmt/cm/device/licensing/pool/regkey/licenses/'
+        url_list = ['https://', self.address, uri, regkey_pool_uuid, '/offerings/', new_regkey]
+        url = ''.join(url_list)
+        patch_dict = {"status": "ACTIVATING_AUTOMATIC", "addOnKeys": add_on_keys.split(',')}
+        payload = json.dumps(patch_dict)
+
+        try:
+            patch(url, self.token, payload, self.debug)
+            print('\nAdding {} addons for offering {} to License server status:'.format(
+                add_on_keys.split(','), new_regkey))
+        except:
+            print('Post to License server failed')
+            raise
+
+        # poll for "eulaText"
+        poll_result = {}
+        attempt = 0 # keep track of tries and give up exit script after 10
+        uri = '/mgmt/cm/device/licensing/pool/regkey/licenses/'
+        url_list = ['https://', self.address, uri, regkey_pool_uuid, '/offerings/', new_regkey]
+        url = ''.join(url_list)
+        while not poll_result.get('status'):
+            try:
+                poll_result = get(url, self.token, self.debug, return_encoding='json')
+                print('\npoll {} for {}, Addons: {}'.format(
+                    attempt +1, new_regkey, add_on_keys.split(',')))
+                if "fail" in poll_result['message']:
+                    sys.exit(poll_result['message'])
+                print(poll_result['status'])
+                print(poll_result['message'])
+                time.sleep(5)
+            except:
+                print('Poll for eula failed for regkey {}'.format(new_regkey))
+                raise
+            attempt += 1
+            if attempt == 5:
+                sys.exit('Giving up after 5 tries to poll for EULA for RegKey')
+        print('Reactivation complete')
+        print(poll_result.get('status'))
+        print('Finished polling...')
+
+
 
 
 
@@ -274,28 +422,43 @@ if __name__ == "__main__":
 
     # STATIC GLOBALS
     ADDRESS = OPT.address
-    DEBUG = OPT.debug
-
+    RG_OBJECT = RegPool(OPT.address, OPT.username, OPT.password, OPT.debug)
 
     # -l
     if OPT.list_pools:
-        pass
+        LICENSE_LIST = RG_OBJECT.list_pool
+        for pool in LICENSE_LIST():
+            print('{}  {}'.format(pool[0], pool[1]))
 
 
     # -o, if -v included will also show moodules
     if OPT.pool_uuid:
-        pass
+        POOL_OFFERINGS = RG_OBJECT.list_offereings(OPT.pool_uuid)
+        print('{0:35}  {1:20} {2:10}'.format('RegKey', 'Status', 'addOnKeys'))
+        print(73 * '-')
+        for offering in  POOL_OFFERINGS:
+            if 'addOnKeys' in offering:
+                print('{0:35}  {1:20} {2:10}'.format(offering['regKey'], offering['status'], 'YES'))
+                # if verbose given list Active modules
+                if OPT.verbose:
+                    active_modules = offering.get('licenseText', 'Not available').splitlines()
+                    for line in active_modules:
+                        if line.startswith('active module'):
+                            print('   {} '.format(line[:80]))
+            else:
+                # -v not given list without active module info
+                print('{0:35}  {1:20} {2:10}'.format(offering['regKey'],
+                                                     offering['status'],
+                                                     offering.get('addOnKeys')))
+
 
     # -i install new offereing with or without an addon keys, requires -r
     if OPT.install_pool_uuid:
-        pass
+        RG_OBJECT.install_offering(OPT.install_pool_uuid, OPT.reg_key, OPT.add_on_key_list)
 
     # -m requires -r -A
     if OPT.modify_pool_uuid:
-        pass
+        RG_OBJECT.modify_offering_addon(OPT.modify_pool_uuid, OPT.reg_key, OPT.add_on_key_list)
 
 
-    RUN = RegPool(OPT.address,OPT.username,OPT.password)
-
-
-#TODO Next add list_pool to class
+    print('SCRIPT END')
