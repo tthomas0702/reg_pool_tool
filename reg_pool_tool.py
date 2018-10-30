@@ -5,20 +5,16 @@
 File name: reg_pool_tool.py
 Author: Tim Thomas
 Date created: 10/19/2018
-Date last modified: 10/19/2018
+Date last modified: 10/30/2018
 Python Version: 2.7.15
 version:
-    0.0.1
+    0.1.0
 
 ./reg_pool_tool.py -h for usage.
-
-
-Example:
 
 To install addon key to existing offering:
 
 ./reg_pool_tool.py -a 10.3.214.7 -m <reg_key_pool> -r <offering> -A <add_on_key>
-
 
 
 Copyright 2018 Tim Thomas
@@ -33,12 +29,6 @@ Unless required by applicable law or agreed to in writing, software distributed
 under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 CONDITIONS OF ANY KIND, either express or implied. See the License for the
 specific language governing permissions and limitations under the License.
-
-
-
-
-
-
 """
 
 from __future__ import print_function
@@ -238,16 +228,6 @@ def patch(url, auth_token, patch_data, debug):
     return patch_result.json()
 
 
-def ls_pools(address, auth_token):  # -> List[{dict}]
-    """ Lists existing regkey pools """
-    uri = '/mgmt/cm/device/licensing/pool/regkey/licenses'
-    url_list = ['https://', address, uri]
-    url = ''.join(url_list)
-    pool_list_result = get(url, auth_token, debug=False, return_encoding='json')
-
-    # returns list of dict for each regkey pool
-    return pool_list_result['items']
-
 class RegPool:
     """work with regkey pools"""
     def __init__(self, bigiq_address, username, password, debug=False):
@@ -290,7 +270,7 @@ class RegPool:
         :type add_on_keys: str comma sep keys
 
         This fucntion installs a new base regkey and optional addon keys and
-        install, and attempts to activate. All status in printed by the function
+        installs, and attempts to activate. All status in printed by the function
         and there is no return statement. If it fails it will show that was well.
         """
         uri = '/mgmt/cm/device/licensing/pool/regkey/licenses/'
@@ -363,9 +343,10 @@ class RegPool:
         :type regkey_pool_uuid: str
         :type new_regkey: str
         :type add_on_keys: str comma sep keys
+        
+        Install addon keys to t previously installed Offereing
 
         """
-
         uri = '/mgmt/cm/device/licensing/pool/regkey/licenses/'
         url_list = ['https://', self.address, uri, regkey_pool_uuid, '/offerings/', new_regkey]
         url = ''.join(url_list)
@@ -408,8 +389,6 @@ class RegPool:
 
 
 
-
-
 if __name__ == "__main__":
 
     SCRIPT_NAME = sys.argv[0]
@@ -418,7 +397,6 @@ if __name__ == "__main__":
     urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
     OPT = cmd_args()
-
 
     # STATIC GLOBALS
     ADDRESS = OPT.address
