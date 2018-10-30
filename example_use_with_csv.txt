@@ -1,0 +1,43 @@
+example of using script with a csv file to install base_reg and add_on_key at the same time:
+
+Here is the csv file with <base_reg>, <add_on_key>
+
+$ cat license.csv
+M8704-41778-17413-06779-3959572,H980484-1209193
+I7440-34138-01728-18582-6965643,A217173-6651145
+P6058-78907-14372-46483-3230382,P227327-0636608
+H8000-39836-35827-80027-0221601,G390635-0683035
+C3438-94723-46001-80908-6657323,Q437505-2556581
+R3899-03651-29362-31475-4617473,K134816-9484281
+X5947-28556-51117-46441-7341201,J137069-9351915
+
+
+Here is a listing of the regkey pools on the BIG-IQ:
+
+$ ./reg_pool_tool.py -a 192.0.2.30 -l
+5678d528-daac-4430-a87e-b67b87acfe20  africa
+07c77c7f-3170-4b17-93de-31e4f39e4709  asia
+
+
+$ while read line; do b=`echo -n $line | cut -d ',' -f1`; r=`echo -n $line | cut -d ',' -f2` ; ./reg_pool_tool.py -a 192.0.2.30 -i 5678d528-daac-4430-a87e-b67b87acfe20 -r ${b} -A ${r}; done < license.csv
+
+Sent base regkey M8704-41778-17413-06779-3959572 to License server status:
+
+poll 1 for M8704-41778-17413-06779-3959572
+ACTIVATING_AUTOMATIC
+Automatic activation in progress
+
+poll 2 for M8704-41778-17413-06779-3959572
+ACTIVATING_AUTOMATIC_NEED_EULA_ACCEPT
+Accept EULA to continue
+Finished polling...
+sending PATCH to accept EULA for M8704-41778-17413-06779-3959572
+Finishing activation for M8704-41778-17413-06779-3959572
+ACTIVATING_AUTOMATIC_EULA_ACCEPTED
+...
+
+
+It will loop through and attempt to install each base_key and add_on_key.
+
+
+
