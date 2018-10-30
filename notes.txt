@@ -1,4 +1,0 @@
-
-Using 10.3.214.7 to test
-
-./reg_pool_tool.py -a 192.0.2.50 -l
